@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: ["Saturn.emu", "2600.emu"]
+        image: ["Saturn.emu"]
 
     steps:
     - name: Checkout emu-ex-plus-alpha repo
@@ -73,34 +73,15 @@ jobs:
     - name: Copy Saturn.emu artifact
       if: ${{ matrix.image == 'Saturn.emu' }}
       run: |
-        cp Saturn.emu/target/android-release/build/outputs/apk/release/SaturnEXPlus-release.apk EX-Emulators/SaturnEXPlus-release.apk
+        cp Saturn.emu/target/android-release-9/build/outputs/apk/release/Saturn-release.apk EX-Emulators/SaturnEXPlus-release.apk
 
     - name: Upload Saturn.emu artifact
       uses: actions/upload-artifact@v3
       if: ${{ matrix.image == 'Saturn.emu' }}
       with: 
         name: Saturn.emu
-        path: ${{ github.workspace }}/Saturn.emu/target/android-release/build/outputs/apk/release/SaturnEXPlus-release.apk
+        path: ${{ github.workspace }}/Saturn.emu/target/android-release-9/build/outputs/apk/release/Saturn-release.apk
 
-
-    - name: Build 2600.emu
-      if: ${{ matrix.image == '2600.emu' }}
-      run: |
-        cd 2600.emu
-        make -f android-release.mk android-apk V=1 -j2
-
-    - name: Copy 2600.emu artifact
-      if: ${{ matrix.image == '2600.emu' }}
-      run: |
-        cp 2600.emu/target/android-release/build/outputs/apk/release/2600Emu-release.apk EX-Emulators/2600Emu-release.apk
-
-    - name: Upload 2600.emu artifact
-      uses: actions/upload-artifact@v3
-      if: ${{ matrix.image == '2600.emu' }}
-      with: 
-        name: 2600emu
-        path: ${{ github.workspace }}/2600.emu/target/android-release/build/outputs/apk/release/2600Emu-release.apk
-        
     - name: Upload EX-Emulators artifacts
       uses: actions/upload-artifact@v3
       with: 
