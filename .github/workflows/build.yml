@@ -69,6 +69,7 @@ jobs:
       run: |        
         cd Saturn.emu
         make -f android-release-9.mk android-apk V=1 -j2
+        find . -name *.apk
 
     - name: Copy Saturn.emu artifact
       if: ${{ matrix.image == 'Saturn.emu' }}
