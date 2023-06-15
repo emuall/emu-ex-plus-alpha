@@ -73,15 +73,15 @@ jobs:
 
     - name: Copy Saturn.emu artifact
       if: ${{ matrix.image == 'Saturn.emu' }}
-      run: |
-        cp Saturn.emu/target/android-release-9/build/outputs/apk/release/Saturn-release.apk EX-Emulators/SaturnEXPlus-release.apk
+      run: | 
+        cp Saturn.emu/target/android-release-9/build/outputs/apk/release/SaturnEmu-release.apk EX-Emulators/SaturnEmu-release.apk
 
     - name: Upload Saturn.emu artifact
       uses: actions/upload-artifact@v3
       if: ${{ matrix.image == 'Saturn.emu' }}
       with: 
         name: Saturn.emu
-        path: ${{ github.workspace }}/Saturn.emu/target/android-release-9/build/outputs/apk/release/Saturn-release.apk
+        path: ${{ github.workspace }}/Saturn.emu/target/android-release-9/build/outputs/apk/release/SaturnEmu-release.apk
 
     - name: Upload EX-Emulators artifacts
       uses: actions/upload-artifact@v3
