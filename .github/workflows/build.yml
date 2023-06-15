@@ -75,7 +75,7 @@ jobs:
       run: |
         cp Saturn.emu/target/android-release/build/outputs/apk/release/SaturnEXPlus-release.apk EX-Emulators/SaturnEXPlus-release.apk
 
-    - name: Upload Snes9x artifact
+    - name: Upload Saturn.emu artifact
       uses: actions/upload-artifact@v3
       if: ${{ matrix.image == 'Saturn.emu' }}
       with: 
