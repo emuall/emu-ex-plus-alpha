@@ -63,6 +63,26 @@ jobs:
         make -f $EMUFRAMEWORK_PATH/android-release.mk config -j2
         make -f $EMUFRAMEWORK_PATH/android-release.mk install V=1 -j2
 
+
+    - name: Build Saturn
+      if: ${{ matrix.image == 'Saturn.emu' }}
+      run: |        
+        cd Saturn.emu
+        make -f android-release-9.mk android-apk V=1 -j2
+
+    - name: Copy Saturn.emu artifact
+      if: ${{ matrix.image == 'Saturn.emu' }}
+      run: |
+        cp Saturn.emu/target/android-release/build/outputs/apk/release/SaturnEXPlus-release.apk EX-Emulators/SaturnEXPlus-release.apk
+
+    - name: Upload Snes9x artifact
+      uses: actions/upload-artifact@v3
+      if: ${{ matrix.image == 'Saturn.emu' }}
+      with: 
+        name: Saturn.emu
+        path: ${{ github.workspace }}/Saturn.emu/target/android-release/build/outputs/apk/release/SaturnEXPlus-release.apk
+
+
     - name: Build 2600.emu
       if: ${{ matrix.image == '2600.emu' }}
       run: |
