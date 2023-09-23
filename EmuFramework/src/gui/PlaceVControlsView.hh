@@ -15,8 +15,6 @@
 	You should have received a copy of the GNU General Public License
 	along with EmuFramework.  If not, see <http://www.gnu.org/licenses/> */
 
-#include <imagine/util/Interpolator.hh>
-#include <imagine/base/Timer.hh>
 #include <imagine/gui/View.hh>
 #include <imagine/gfx/GfxText.hh>
 #include <imagine/input/DragTracker.hh>
@@ -38,6 +36,7 @@ public:
 	void place() final;
 	bool inputEvent(const Input::Event &e) final;
 	void draw(Gfx::RendererCommands &__restrict__ cmds) final;
+	void onShow() final;
 
 private:
 	struct DragData
@@ -45,13 +44,13 @@ private:
 		VControllerElement *elem{};
 		WPt startPos{};
 	};
-	Gfx::Text text;
+	Gfx::Text exitText;
+	Gfx::Text snapText;
 	VController &vController;
-	InterpolatorValue<float, SteadyClockTimePoint, IG::InterpolatorType::LINEAR> textFade{};
-	Timer animationStartTimer{"PlaceVControlsView::animationStartTimer"};
-	OnFrameDelegate animate;
 	WRect exitBtnRect{};
+	WRect snapBtnRect{};
 	Input::DragTracker<DragData> dragTracker;
+	size_t snapPxIdx{};
 };
 
 }

@@ -40,7 +40,7 @@ namespace IG::FS
 {
 class PathString;
 class FileString;
-enum class DirOpenFlagsMask: uint8_t;
+struct DirOpenFlags;
 }
 
 namespace IG
@@ -62,7 +62,7 @@ public:
 	AndroidApplication(ApplicationInitParams);
 	void onWindowFocusChanged(ApplicationContext, int focused);
 	JNIEnv* thisThreadJniEnv() const;
-	bool hasHardwareNavButtons() const { return deviceFlags & PERMANENT_MENU_KEY_BIT; }
+	bool hasHardwareNavButtons() const { return deviceFlags.permanentMenuKey; }
 	constexpr JNI::InstMethod<void()> recycleBitmapMethod() const { return jRecycle; }
 	jobject makeFontRenderer(JNIEnv *, jobject baseActivity);
 	void setStatusBarHidden(JNIEnv *, jobject baseActivity, bool hidden);
@@ -78,8 +78,8 @@ public:
 	bool systemAnimatesWindowRotation() const;
 	void setIdleDisplayPowerSave(JNIEnv *, jobject baseActivity, bool on);
 	void endIdleByUserActivity(ApplicationContext);
-	void setSysUIStyle(JNIEnv *, jobject baseActivity, int32_t androidSDK, uint32_t flags);
-	bool hasDisplayCutout() const { return deviceFlags & DISPLAY_CUTOUT_BIT; }
+	void setSysUIStyle(JNIEnv *, jobject baseActivity, int32_t androidSDK, SystemUIStyleFlags);
+	bool hasDisplayCutout() const { return deviceFlags.displayCutout; }
 	bool hasFocus() const;
 	void addNotification(JNIEnv *, jobject baseActivity, const char *onShow, const char *title, const char *message);
 	void removePostedNotifications(JNIEnv *, jobject baseActivity);
@@ -89,7 +89,7 @@ public:
 	bool createDocumentIntent(JNIEnv *, jobject baseActivity, SystemDocumentPickerDelegate);
 	FrameTimer makeFrameTimer(Screen &);
 	bool requestPermission(ApplicationContext, Permission);
-	UniqueFileDescriptor openFileUriFd(JNIEnv *, jobject baseActivity, CStringView uri, OpenFlagsMask oFlags = {}) const;
+	UniqueFileDescriptor openFileUriFd(JNIEnv *, jobject baseActivity, CStringView uri, OpenFlags oFlags = {}) const;
 	bool fileUriExists(JNIEnv *, jobject baseActivity, CStringView uri) const;
 	WallClockTimePoint fileUriLastWriteTime(JNIEnv *, jobject baseActivity, CStringView uri) const;
 	std::string fileUriFormatLastWriteTimeLocal(JNIEnv *, jobject baseActivity, CStringView uri) const;
@@ -98,7 +98,7 @@ public:
 	bool renameFileUri(JNIEnv *, jobject baseActivity, CStringView oldUri, CStringView newUri) const;
 	bool createDirectoryUri(JNIEnv *, jobject baseActivity, CStringView uri) const;
 	bool forEachInDirectoryUri(JNIEnv *, jobject baseActivity, CStringView uri, DirectoryEntryDelegate,
-		FS::DirOpenFlagsMask) const;
+		FS::DirOpenFlags) const;
 	std::string formatDateAndTime(JNIEnv *, jclass baseActivityClass, WallClockTimePoint timeSinceEpoch);
 
 	// Input system functions
@@ -120,10 +120,13 @@ public:
 	bool hasMultipleInputDeviceSupport() const;
 
 private:
-	using DeviceFlags = uint8_t;
-	static constexpr DeviceFlags PERMANENT_MENU_KEY_BIT = bit(0);
-	static constexpr DeviceFlags DISPLAY_CUTOUT_BIT = bit(1);
-	static constexpr DeviceFlags HANDLE_ROTATION_ANIMATION_BIT = bit(2);
+	struct DeviceFlags
+	{
+		uint8_t
+		permanentMenuKey:1{},
+		displayCutout:1{},
+		handleRotationAnimation:1{};
+	};
 
 	JNI::UniqueGlobalRef displayListenerHelper;
 	JNI::InstMethod<void()> jRecycle;
@@ -161,7 +164,7 @@ private:
 	int mostRecentKeyEventDevID{-1};
 	Rotation osRotation{};
 	bool aHasFocus{true};
-	DeviceFlags deviceFlags{PERMANENT_MENU_KEY_BIT};
+	DeviceFlags deviceFlags{.permanentMenuKey = true};
 	bool keepScreenOn{};
 	bool trackballNav{};
 public:

@@ -144,7 +144,7 @@ void RendererTask::updateDrawableForSurfaceChange(Window &win, WindowSurfaceChan
 			r->makeWindowDrawable(*this, win, data.bufferConfig, data.colorSpace);
 			return;
 		case WindowSurfaceChange::Action::CHANGED:
-			if(change.surfaceResized())
+			if(change.flags.surfaceResized)
 			{
 				GLTask::run(
 					[this, drawable = (Drawable)drawable, v = data.viewportRect, swapInterval = data.swapInterval](TaskContext ctx)
@@ -184,7 +184,7 @@ void RendererTask::setDefaultViewport(Window &win, Viewport v)
 	renderer().setDefaultViewport(win, v);
 	auto &data = winData(win);
 	GLTask::run(
-		[drawable = (Drawable)data.drawable, v = asYUpRelRect(v)](TaskContext ctx)
+		[drawable = (Drawable)data.drawable, v = v.asYUpRelRect()](TaskContext ctx)
 		{
 			// update viewport if drawable is currently in use
 			if(GLManager::hasCurrentDrawable(drawable))

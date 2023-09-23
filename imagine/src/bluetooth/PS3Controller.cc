@@ -19,7 +19,7 @@
 #include <imagine/base/Error.hh>
 #include <imagine/logger/logger.h>
 #include <imagine/time/Time.hh>
-#include <imagine/util/bitset.hh>
+#include <imagine/util/bit.hh>
 #include <imagine/util/ranges.hh>
 #include "../input/PackedInputAccess.hh"
 
@@ -111,7 +111,7 @@ static const char *ps3ButtonName(Input::Key k)
 }
 
 PS3Controller::PS3Controller(ApplicationContext ctx, BluetoothAddr addr):
-	BluetoothInputDevice{ctx, Input::Map::PS3PAD, Input::Device::TYPE_BIT_GAMEPAD, "PS3 Controller"},
+	BluetoothInputDevice{ctx, Input::Map::PS3PAD, {.gamepad = true}, "PS3 Controller"},
 	ctlSock{ctx}, intSock{ctx},
 	addr{addr}
 {}

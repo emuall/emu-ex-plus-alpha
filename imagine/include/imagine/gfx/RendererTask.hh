@@ -15,18 +15,22 @@
 	You should have received a copy of the GNU General Public License
 	along with Imagine.  If not, see <http://www.gnu.org/licenses/> */
 
-#include <imagine/config/defs.hh>
+#include <imagine/gfx/defs.hh>
+#include <imagine/gfx/SyncFence.hh>
+#include <imagine/util/utility.h>
+#include <concepts>
+#include <chrono>
 
 #ifdef CONFIG_GFX_OPENGL
 #include <imagine/gfx/opengl/GLRendererTask.hh>
 #endif
 
-#include <imagine/gfx/defs.hh>
-#include <imagine/gfx/SyncFence.hh>
-#include <imagine/base/baseDefs.hh>
-#include <imagine/util/utility.h>
-#include <concepts>
-#include <chrono>
+namespace IG
+{
+struct WindowDrawParams;
+class Window;
+class Viewport;
+}
 
 namespace IG::Gfx
 {

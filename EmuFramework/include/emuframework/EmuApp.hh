@@ -27,7 +27,8 @@
 #include <emuframework/Option.hh>
 #include <emuframework/AutosaveManager.hh>
 #include <emuframework/OutputTimingManager.hh>
-#include <imagine/input/Input.hh>
+#include <emuframework/RecentContent.hh>
+#include <imagine/input/inputDefs.hh>
 #include <imagine/input/android/MogaManager.hh>
 #include <imagine/gui/ViewManager.hh>
 #include <imagine/gui/TextEntry.hh>
@@ -44,7 +45,6 @@
 #include <imagine/data-type/image/PixmapWriter.hh>
 #include <imagine/font/Font.hh>
 #include <imagine/util/used.hh>
-#include <imagine/util/container/ArrayList.hh>
 #include <imagine/util/enum.hh>
 #include <cstring>
 #include <optional>
@@ -63,17 +63,6 @@ namespace EmuEx
 
 struct MainWindowData;
 class EmuMainMenuView;
-
-struct RecentContentInfo
-{
-	FS::PathString path{};
-	FS::FileString name{};
-
-	constexpr bool operator ==(RecentContentInfo const& rhs) const
-	{
-		return path == rhs.path;
-	}
-};
 
 enum class Tristate : uint8_t
 {
@@ -148,8 +137,6 @@ class EmuApp : public IG::Application
 public:
 	using CreateSystemCompleteDelegate = DelegateFunc<void (const Input::Event &)>;
 	using NavView = BasicNavView;
-	static constexpr int MAX_RECENT = 10;
-	using RecentContentList = StaticArrayList<RecentContentInfo, MAX_RECENT>;
 
 	enum class ViewID
 	{
@@ -171,8 +158,14 @@ public:
 	EmuApp(IG::ApplicationInitParams, IG::ApplicationContext &);
 
 	// required sub-class API functions
+	AssetDesc vControllerAssetDesc(KeyInfo) const;
+	static std::span<const KeyCategory> keyCategories();
+	static std::span<const KeyConfigDesc> defaultKeyConfigs();
+	static std::string_view systemKeyCodeToString(KeyCode);
+
+	// optional sub-class API functions
 	bool willCreateSystem(ViewAttachParams, const Input::Event &);
-	AssetDesc vControllerAssetDesc(unsigned key) const;
+	static bool allowsTurboModifier(KeyCode);
 
 	void mainInitCommon(IG::ApplicationInitParams, IG::ApplicationContext);
 	static void onCustomizeNavView(NavView &v);
@@ -217,8 +210,9 @@ public:
 	static void updateLegacySavePath(IG::ApplicationContext, CStringView path);
 	auto screenshotDirectory() const { return system().userPath(userScreenshotPath); }
 	static std::unique_ptr<View> makeCustomView(ViewAttachParams attach, ViewID id);
-	bool handleKeyInput(InputAction, const Input::Event &srcEvent);
-	void handleSystemKeyInput(InputAction);
+	bool handleKeyInput(KeyInfo, const Input::Event &srcEvent);
+	bool handleAppActionKeyInput(InputAction, const Input::Event &srcEvent);
+	void handleSystemKeyInput(KeyInfo, Input::Action, uint32_t metaState = 0);
 	void runTurboInputEvents();
 	void resetInput();
 	void setRunSpeed(double speed);
@@ -237,10 +231,8 @@ public:
 	Window &emuWindow();
 	AutosaveManager &autosaveManager() { return autosaveManager_; }
 	FrameTimeConfig configFrameTime();
-	void setDisabledInputKeys(std::span<const unsigned> keys);
+	void setDisabledInputKeys(std::span<const KeyCode> keys);
 	void unsetDisabledInputKeys();
-	void updateKeyboardMapping();
-	void toggleKeyboard();
 	Gfx::TextureSpan asset(AssetID) const;
 	Gfx::TextureSpan asset(AssetDesc) const;
 	VController &defaultVController() { return inputManager.vController; }
@@ -257,19 +249,9 @@ public:
 	bool mogaManagerIsActive() const { return bool(mogaManagerPtr); }
 	void setMogaManagerActive(bool on, bool notify);
 	constexpr IG::VibrationManager &vibrationManager() { return vibrationManager_; }
-	static std::span<const KeyCategory> inputControlCategories();
-	const KeyCategory &categoryOfSystemKey(unsigned key) const;
-	std::string_view systemKeyName(unsigned key) const;
-	unsigned transposeKeyForPlayer(unsigned keys, int player) const;
-	unsigned validateSystemKey(unsigned key, bool isUIKey) const;
 	BluetoothAdapter *bluetoothAdapter();
 	void closeBluetoothConnections();
 	ViewAttachParams attachParams();
-	void addRecentContent(std::string_view path, std::string_view name);
-	void addCurrentContentToRecent();
-	RecentContentList &recentContent() { return recentContentList; };
-	void writeRecentContent(FileIO &);
-	bool readRecentContent(IG::ApplicationContext, MapIO &, size_t readSize_);
 	auto &customKeyConfigList() { return inputManager.customKeyConfigs; };
 	auto &savedInputDeviceList() { return inputManager.savedInputDevs; };
 	IG::Viewport makeViewport(const Window &win) const;
@@ -348,10 +330,10 @@ public:
 	Tristate lowProfileOSNavMode() const { return (Tristate)(uint8_t)optionLowProfileOSNav; }
 	Tristate hideOSNavMode() const { return (Tristate)(uint8_t)optionHideOSNav; }
 	Tristate hideStatusBarMode() const { return (Tristate)(uint8_t)optionHideStatusBar; }
-	void setEmuOrientation(OrientationMask);
-	void setMenuOrientation(OrientationMask);
-	OrientationMask emuOrientation() const { return (OrientationMask)optionEmuOrientation.val; }
-	OrientationMask menuOrientation() const { return (OrientationMask)optionMenuOrientation.val; }
+	void setEmuOrientation(Orientations);
+	void setMenuOrientation(Orientations);
+	Orientations emuOrientation() const { return optionEmuOrientation; }
+	Orientations menuOrientation() const { return optionMenuOrientation; }
 	void setShowsBundledGames(bool);
 	bool showsBundledGames() const { return optionShowBundledGames; }
 	auto &notificationIconOption() { return optionNotificationIcon; }
@@ -531,8 +513,8 @@ protected:
 	[[no_unique_address]] PerformanceHintSession perfHintSession;
 	BluetoothAdapter *bta{};
 	IG_UseMemberIf(MOGA_INPUT, std::unique_ptr<Input::MogaManager>, mogaManagerPtr);
-	RecentContentList recentContentList;
 public:
+	RecentContent recentContent;
 	std::string userScreenshotPath;
 protected:
 	IG_UseMemberIf(Config::cpuAffinity, CPUMask, cpuAffinityMask){};
@@ -551,8 +533,8 @@ protected:
 	IG_UseMemberIf(Config::NAVIGATION_BAR, Byte1Option, optionLowProfileOSNav);
 	IG_UseMemberIf(Config::NAVIGATION_BAR, Byte1Option, optionHideOSNav);
 	IG_UseMemberIf(Config::STATUS_BAR, Byte1Option, optionHideStatusBar);
-	Byte1Option optionEmuOrientation;
-	Byte1Option optionMenuOrientation;
+	Orientations optionEmuOrientation;
+	Orientations optionMenuOrientation;
 	Byte1Option optionShowBundledGames;
 	IG_UseMemberIf(Config::Input::BLUETOOTH, Byte1Option, optionShowBluetoothScan);
 	Byte1Option optionImgFilter;
@@ -566,7 +548,6 @@ protected:
 	Byte1Option optionShowOnSecondScreen;
 	Byte1Option optionTextureBufferMode;
 	Byte1Option optionVideoImageBuffers;
-	bool turboModifierActive{};
 	Gfx::DrawableConfig windowDrawableConf;
 	IG::PixelFormat renderPixelFmt;
 	IG::Rotation contentRotation_{IG::Rotation::ANY};

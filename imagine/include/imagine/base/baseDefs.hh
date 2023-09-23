@@ -18,7 +18,6 @@
 #include <imagine/config/defs.hh>
 #include <imagine/time/Time.hh>
 #include <imagine/util/DelegateFunc.hh>
-#include <imagine/util/bitset.hh>
 #include <imagine/util/string/CStringView.hh>
 #include <imagine/util/enum.hh>
 #include <vector>
@@ -152,22 +151,24 @@ namespace IG
 
 using OnFrameDelegate = DelegateFunc<bool (FrameParams params)>;
 
-enum class OrientationMask: uint8_t
+struct Orientations
 {
-	UNSET,
-	PORTRAIT = bit(0),
-	LANDSCAPE_RIGHT = bit(1),
-	PORTRAIT_UPSIDE_DOWN = bit(2),
-	LANDSCAPE_LEFT = bit(3),
-	ALL_LANDSCAPE = LANDSCAPE_RIGHT | LANDSCAPE_LEFT,
-	ALL_PORTRAIT = PORTRAIT | PORTRAIT_UPSIDE_DOWN,
-	ALL_BUT_UPSIDE_DOWN = PORTRAIT | LANDSCAPE_RIGHT | LANDSCAPE_LEFT,
-	ALL = PORTRAIT | LANDSCAPE_RIGHT | PORTRAIT_UPSIDE_DOWN | LANDSCAPE_LEFT,
+	uint8_t
+	portrait:1{},
+	landscapeRight:1{},
+	portraitUpsideDown:1{},
+	landscapeLeft:1{};
+
+	// TODO: use constexpr bit_cast with bit-fields when Clang supports it
+	constexpr operator uint8_t() const { return portrait | landscapeRight << 1 | portraitUpsideDown << 2 | landscapeLeft << 3; }
+	constexpr bool operator ==(Orientations const&) const = default;
+	static constexpr Orientations allLandscape() { return {.landscapeRight = 1, .landscapeLeft = 1}; }
+	static constexpr Orientations allPortrait() { return {.portrait = 1, .portraitUpsideDown = 1}; }
+	static constexpr Orientations allButUpsideDown() { return {.portrait = 1, .landscapeRight = 1, .landscapeLeft = 1}; }
+	static constexpr Orientations all() { return {.portrait = 1, .landscapeRight = 1, .portraitUpsideDown = 1, .landscapeLeft = 1}; }
 };
 
-IG_DEFINE_ENUM_BIT_FLAG_FUNCTIONS(OrientationMask);
-
-std::string_view asString(OrientationMask);
+std::string_view asString(Orientations);
 
 WISE_ENUM_CLASS((Rotation, uint8_t),
 	UP,
@@ -194,6 +195,15 @@ static constexpr int APP_ON_RESUME_PRIORITY = 0;
 
 // Window/Screen helper classes
 
+struct WindowSurfaceChangeFlags
+{
+	using BitSetClassInt = uint8_t;
+
+	BitSetClassInt
+	surfaceResized:1{},
+	contentRectResized:1{};
+};
+
 struct WindowSurfaceChange
 {
 	enum class Action : uint8_t
@@ -201,18 +211,12 @@ struct WindowSurfaceChange
 		CREATED, CHANGED, DESTROYED
 	};
 
-	static constexpr uint8_t SURFACE_RESIZED = bit(0),
-		CONTENT_RECT_RESIZED = bit(1),
-		RESIZE_BITS = SURFACE_RESIZED | CONTENT_RECT_RESIZED;
-
 	Action action{};
-	uint8_t flags{};
+	WindowSurfaceChangeFlags flags{};
 
-	constexpr WindowSurfaceChange(Action action, uint8_t flags = 0):
+	constexpr WindowSurfaceChange(Action action, WindowSurfaceChangeFlags flags = {}):
 		action{action}, flags{flags} {}
 	constexpr bool resized() const { return action == Action::CHANGED; }
-	constexpr bool surfaceResized() const { return flags & SURFACE_RESIZED; }
-	constexpr bool contentRectResized() const { return flags & CONTENT_RECT_RESIZED; }
 };
 
 struct WindowDrawParams

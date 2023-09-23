@@ -15,51 +15,59 @@
 
 #include <emuframework/TurboInput.hh>
 #include <emuframework/EmuApp.hh>
+#include <imagine/logger/logger.h>
 
 namespace EmuEx
 {
 
-void TurboInput::addEvent(unsigned action)
+constexpr SystemLogger log{"TurboInput"};
+
+void TurboInput::addEvent(KeyInfo key)
 {
-	Action *slot = std::ranges::find_if(activeAction, [](Action a){ return a == 0; });
-	if(slot != activeAction.end())
+	key.flags.turbo = 0;
+	if(keys.empty())
+		clock = 0; // Reset the clock so new turbo event takes effect next frame
+	if(keys.tryPushBack(key))
 	{
-		*slot = action;
-		logMsg("added turbo event action %d", action);
+		log.info("added event action {}", key.codes[0]);
 	}
 }
 
-void TurboInput::removeEvent(unsigned action)
+void TurboInput::removeEvent(KeyInfo key)
 {
-	for(auto &e : activeAction)
+	key.flags.turbo = 0;
+	if(erase(keys, key))
 	{
-		if(e == action)
-		{
-			e = 0;
-			logMsg("removed turbo event action %d", action);
-		}
+		log.info("removed event action {}", key.codes[0]);
 	}
 }
 
+void TurboInput::updateEvent(EmuApp &app, KeyInfo key, Input::Action act)
+{
+	key.flags.turbo = 0;
+	if(act == Input::Action::PUSHED)
+	{
+		addEvent(key);
+	}
+	else
+	{
+		removeEvent(key);
+		app.handleSystemKeyInput(key, Input::Action::RELEASED);
+	}
+}
 
 void TurboInput::update(EmuApp &app)
 {
-	static const int turboFrames = 4;
-
-	for(auto e : activeAction)
+	const int turboFrames = 4;
+	for(auto k : keys)
 	{
-		if(e)
+		if(clock == 0)
 		{
-			if(clock == 0)
-			{
-				//logMsg("turbo push for player %d, action %d", e.player, e.action);
-				app.system().handleInputAction(&app, {e, Input::Action::PUSHED});
-			}
-			else if(clock == turboFrames/2)
-			{
-				//logMsg("turbo release for player %d, action %d", e.player, e.action);
-				app.system().handleInputAction(&app, {e, Input::Action::RELEASED});
-			}
+			app.handleSystemKeyInput(k, Input::Action::PUSHED);
+		}
+		else if(clock == turboFrames/2)
+		{
+			app.handleSystemKeyInput(k, Input::Action::RELEASED);
 		}
 	}
 	clock++;

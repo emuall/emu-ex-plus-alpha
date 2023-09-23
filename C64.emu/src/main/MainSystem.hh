@@ -25,6 +25,7 @@
 #include <vector>
 #include <string>
 #include <string_view>
+#include <atomic>
 
 extern "C"
 {
@@ -194,7 +195,6 @@ public:
 	void reset(EmuApp &, ResetMode mode);
 	void clearInputBuffers(EmuInputView &view);
 	void handleInputAction(EmuApp *, InputAction);
-	InputAction translateInputAction(InputAction);
 	SystemInputDeviceDesc inputDeviceDesc(int idx) const;
 	FrameTime frameTime() const { return fromHz<FrameTime>(systemFrameRate); }
 	void configAudioRate(FrameTime outputFrameTime, int outputRate);
@@ -229,6 +229,7 @@ protected:
 	void startCanvasRunningFrame();
 	void setCanvasSkipFrame(bool on);
 	bool updateCanvasPixelFormat(struct video_canvas_s *, PixelFormat);
+	void tryLoadingSplitVic20Cart();
 };
 
 using MainSystem = C64System;

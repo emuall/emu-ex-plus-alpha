@@ -21,10 +21,9 @@
 #include <imagine/time/Time.hh>
 #include <imagine/audio/SampleFormat.hh>
 #include <imagine/util/rectangle2.h>
-#include <imagine/util/enum.hh>
-#include <imagine/util/bitset.hh>
 #include <emuframework/EmuTiming.hh>
 #include <emuframework/VController.hh>
+#include <emuframework/EmuInput.hh>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -84,24 +83,15 @@ enum class ConfigType : uint8_t
 	MAIN, SESSION, CORE
 };
 
-enum class InputActionFlagsMask: uint8_t
-{
-	turbo = bit(0),
-};
-
-IG_DEFINE_ENUM_BIT_FLAG_FUNCTIONS(InputActionFlagsMask);
-
 struct InputAction
 {
-	unsigned key{};
+	KeyCode code{};
+	KeyFlags flags{};
 	Input::Action state{};
 	uint32_t metaState{};
-	InputActionFlagsMask flags{};
 
-	void setTurboFlag(bool on)
-	{
-		flags = setOrClearBits(flags, InputActionFlagsMask::turbo, on);
-	}
+	constexpr bool isPushed() const { return state == Input::Action::PUSHED; }
+	constexpr operator KeyInfo() const { return {code, flags}; }
 };
 
 enum class InputComponent : uint8_t
@@ -109,28 +99,21 @@ enum class InputComponent : uint8_t
 	ui, dPad, button, trigger
 };
 
-enum class InputComponentFlagsMask: uint8_t
+struct InputComponentFlags
 {
-	altConfig = bit(0),
-	rowSizeBit1 = bit(1),
-	rowSizeBit2 = bit(2),
-	rowSizeBits = rowSizeBit1 | rowSizeBit2,
-	rowSizeAuto = 0,
-	rowSize1 = rowSizeBit1,
-	rowSize2 = rowSizeBit2,
-	rowSize3 = rowSizeBit1 | rowSizeBit2,
-	staggeredLayout = bit(3),
+	uint8_t
+	altConfig:1{},
+	rowSize:2{},
+	staggeredLayout:1{};
 };
-
-IG_DEFINE_ENUM_BIT_FLAG_FUNCTIONS(InputComponentFlagsMask);
 
 struct InputComponentDesc
 {
 	const char *name{};
-	std::span<const unsigned> keyCodes{};
+	std::span<const KeyInfo> keyCodes{};
 	InputComponent type{};
 	_2DOrigin layoutOrigin{};
-	InputComponentFlagsMask flags{};
+	InputComponentFlags flags{};
 };
 
 struct SystemInputDeviceDesc
@@ -218,7 +201,6 @@ public:
 	void reset(EmuApp &, ResetMode mode);
 	void clearInputBuffers(EmuInputView &view);
 	void handleInputAction(EmuApp *, InputAction);
-	InputAction translateInputAction(InputAction);
 	FrameTime frameTime() const;
 	void configAudioRate(FrameTime outputFrameTime, int outputRate);
 	static std::span<const AspectRatioInfo> aspectRatioInfos();

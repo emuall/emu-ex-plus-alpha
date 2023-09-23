@@ -20,7 +20,7 @@
 #include <emuframework/EmuVideoLayer.hh>
 #include <emuframework/FilePicker.hh>
 #include "../EmuOptions.hh"
-#include "../privateInput.hh"
+#include "../InputDeviceData.hh"
 #include <imagine/gui/AlertView.hh>
 #include <imagine/gfx/RendererCommands.hh>
 #include <imagine/util/variant.hh>
@@ -59,7 +59,6 @@ bool EmuInputView::toggleAltSpeedMode(AltSpeedMode mode)
 
 bool EmuInputView::setAltSpeedMode(AltSpeedMode mode, bool on)
 {
-	logMsg("alt speed state:%d", on);
 	speedToggleActive = on;
 	vController->updateAltSpeedModeInput(mode, on);
 	updateRunSpeed(mode);
@@ -103,20 +102,39 @@ bool EmuInputView::inputEvent(const Input::Event &e)
 					isPushed ? "pushed" : "released", keyEv.device()->keyName(keyEv.key()),
 					keyEv.device()->name()));
 			}
-			for(auto action : actionGroup)
+			devData.updateInputKey(keyEv);
+			for(auto keyInfo : actionGroup)
 			{
-				if(!action)
+				if(!keyInfo)
 					break;
 				didAction = true;
 				if(isRepeated) // only consume the event
 					break;
-				action--; // action values are offset by 1 due to the null action value
-				if(emuApp.handleKeyInput({action, keyEv.state(), keyEv.metaKeyBits()}, e))
-					break;
+				if(keyInfo.isComboKey())
+				{
+					auto &comboKeyMapping = devData.keyCombos[keyInfo.codes[1]];
+					if(isPushed)
+					{
+						if(devData.keysArePushed(comboKeyMapping.mapKey))
+						{
+							emuApp.handleKeyInput(comboKeyMapping.key, e);
+							break; // combo keys are always first and short-circuit the loop when pushed (e.g. "Shift + A" doesn't trigger "A")
+						}
+					}
+					else
+					{
+						emuApp.handleKeyInput(comboKeyMapping.key, e);
+					}
+				}
+				else
+				{
+					if(emuApp.handleKeyInput(keyInfo, e))
+						break;
+				}
 			}
 			return didAction
 				|| keyEv.isGamepad() // consume all gamepad events
-				|| devData.devConf.shouldConsumeUnboundKeys();
+				|| devData.devConf.shouldHandleUnboundKeys;
 		}
 	}, e);
 }
@@ -127,9 +145,9 @@ void EmuInputView::setSystemGestureExclusion(bool on)
 	{
 		auto rectsSize = vController->deviceElements().size();
 		WRect rects[rectsSize];
-		for(int i = 0; const auto &e : vController->deviceElements())
+		for(auto &&[i, e] : enumerate(vController->deviceElements()))
 		{
-			rects[i++] = e.realBounds();
+			rects[i] = e.realBounds();
 		}
 		window().setSystemGestureExclusionRects({rects, rectsSize});
 	}

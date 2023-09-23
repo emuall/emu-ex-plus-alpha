@@ -13,13 +13,12 @@
 	You should have received a copy of the GNU General Public License
 	along with Imagine.  If not, see <http://www.gnu.org/licenses/> */
 
-#define LOGTAG "AppContext"
 #include <imagine/base/ApplicationContext.hh>
 #include <imagine/base/Application.hh>
 #include <imagine/base/VibrationManager.hh>
 #include <imagine/base/Sensor.hh>
 #include <imagine/base/PerformanceHintManager.hh>
-#include <imagine/input/Input.hh>
+#include <imagine/input/Event.hh>
 #include <imagine/fs/FS.hh>
 #include <imagine/fs/FSUtils.hh>
 #include <imagine/fs/AssetFS.hh>
@@ -34,11 +33,14 @@
 #include <imagine/util/ranges.hh>
 #include <imagine/util/container/ArrayList.hh>
 #include <imagine/util/memory/UniqueFileStream.hh>
+#include <imagine/util/bit.hh>
 #include <imagine/logger/logger.h>
 #include <cstring>
 
 namespace IG
 {
+
+constexpr SystemLogger log{"AppContext"};
 
 void ApplicationContext::dispatchOnInit(ApplicationInitParams initParams)
 {
@@ -184,16 +186,16 @@ FS::RootPathInfo ApplicationContext::rootPathInfo(std::string_view path) const
 			Config::envIsAndroid && treePos != std::string_view::npos)
 		{
 			auto [docPath, docPos] = FS::uriPathSegment(path, FS::uriPathSegmentDocumentName);
-			//logMsg("tree path segment:%s", FS::PathString{treePath}.data());
-			//logMsg("document path segment:%s", FS::PathString{docPath}.data());
+			//log.info("tree path segment:{}", FS::PathString{treePath});
+			//log.info("document path segment:{}", FS::PathString{docPath});
 			if(docPos == std::string_view::npos || docPath.size() < treePath.size())
 			{
-				logErr("invalid document path in tree URI:%s", path.data());
+				log.error("invalid document path in tree URI:{}", path);
 				return {};
 			}
 			auto rootLen = docPos + treePath.size();
 			FS::PathString rootDocUri{path.data(), rootLen};
-			logMsg("found root document URI:%s", rootDocUri.data());
+			log.info("found root document URI:{}", rootDocUri);
 			auto name = fileUriDisplayName(rootDocUri);
 			if(rootDocUri.ends_with("%3A"))
 				name += ':';
@@ -201,7 +203,7 @@ FS::RootPathInfo ApplicationContext::rootPathInfo(std::string_view path) const
 		}
 		else
 		{
-			logErr("rootPathInfo() unsupported URI:%s", path.data());
+			log.error("rootPathInfo() unsupported URI:{}", path);
 			return {};
 		}
 	}
@@ -221,11 +223,11 @@ FS::RootPathInfo ApplicationContext::rootPathInfo(std::string_view path) const
 	}
 	if(!lastMatchOffset)
 		return {};
-	logMsg("found root location:%s with length:%d", nearestPtr->root.info.name.data(), (int)nearestPtr->root.info.length);
+	log.info("found root location:{} with length:{}", nearestPtr->root.info.name, nearestPtr->root.info.length);
 	return nearestPtr->root.info;
 }
 
-AssetIO ApplicationContext::openAsset(CStringView name, IOAccessHint hint, OpenFlagsMask openFlags, const char *appName) const
+AssetIO ApplicationContext::openAsset(CStringView name, IOAccessHint hint, OpenFlags openFlags, const char *appName) const
 {
 	#ifdef __ANDROID__
 	return {*this, name, hint, openFlags};
@@ -253,17 +255,17 @@ FS::AssetDirectoryIterator ApplicationContext::openAssetDirectory(CStringView pa
 
 [[gnu::weak]] bool ApplicationContext::showSystemCreateDocumentPicker(SystemDocumentPickerDelegate) { return false; }
 
-[[gnu::weak]] FileIO ApplicationContext::openFileUri(CStringView uri, IOAccessHint access, OpenFlagsMask openFlags) const
+[[gnu::weak]] FileIO ApplicationContext::openFileUri(CStringView uri, IOAccessHint access, OpenFlags openFlags) const
 {
 	return {uri, access, openFlags};
 }
 
-FileIO ApplicationContext::openFileUri(CStringView uri, OpenFlagsMask openFlags) const
+FileIO ApplicationContext::openFileUri(CStringView uri, OpenFlags openFlags) const
 {
 	return openFileUri(uri, IOAccessHint::Normal, openFlags);
 }
 
-[[gnu::weak]] UniqueFileDescriptor ApplicationContext::openFileUriFd(CStringView uri, OpenFlagsMask openFlags) const
+[[gnu::weak]] UniqueFileDescriptor ApplicationContext::openFileUriFd(CStringView uri, OpenFlags openFlags) const
 {
 	return PosixIO{uri, openFlags}.releaseFd();
 }
@@ -309,7 +311,7 @@ FileIO ApplicationContext::openFileUri(CStringView uri, OpenFlagsMask openFlags)
 }
 
 [[gnu::weak]] bool ApplicationContext::forEachInDirectoryUri(CStringView uri,
-	DirectoryEntryDelegate del, FS::DirOpenFlagsMask flags) const
+	DirectoryEntryDelegate del, FS::DirOpenFlags flags) const
 {
 	return forEachInDirectory(uri, del, flags);
 }
@@ -317,6 +319,14 @@ FileIO ApplicationContext::openFileUri(CStringView uri, OpenFlagsMask openFlags)
 const InputDeviceContainer &ApplicationContext::inputDevices() const
 {
 	return application().inputDevices();
+}
+
+Input::Device *ApplicationContext::inputDevice(std::string_view name, int enumId) const
+{
+	auto it = std::ranges::find_if(inputDevices(), [&](auto &devPtr){ return devPtr->name() == name; });
+	if(it == inputDevices().end())
+		return {};
+	return it->get();
 }
 
 void ApplicationContext::setHintKeyRepeat(bool on)
@@ -347,7 +357,7 @@ void ApplicationContext::setSwappedConfirmKeys(std::optional<bool> opt)
 	application().setSwappedConfirmKeys(opt);
 }
 
-[[gnu::weak]] void ApplicationContext::setSysUIStyle(uint32_t flags) {}
+[[gnu::weak]] void ApplicationContext::setSysUIStyle(SystemUIStyleFlags) {}
 
 [[gnu::weak]] bool ApplicationContext::hasTranslucentSysUI() const { return false; }
 
@@ -363,7 +373,7 @@ void ApplicationContext::setSwappedConfirmKeys(std::optional<bool> opt)
 
 [[gnu::weak]] void ApplicationContext::setSystemOrientation(Rotation) {}
 
-[[gnu::weak]] OrientationMask ApplicationContext::defaultSystemOrientations() const { return OrientationMask::ALL; }
+[[gnu::weak]] Orientations ApplicationContext::defaultSystemOrientations() const { return Orientations::all(); }
 
 [[gnu::weak]] void ApplicationContext::setOnSystemOrientationChanged(SystemOrientationChangedDelegate) {}
 
@@ -424,7 +434,7 @@ void ApplicationContext::setSwappedConfirmKeys(std::optional<bool> opt)
 	auto [min, max] = std::ranges::minmax_element(cpuFreqInfos, {}, &CPUFreqInfo::freq);
 	if(min->freq == max->freq) // not heterogeneous
 		return 0;
-	logDMsg("Detected heterogeneous CPUs with min:%d max:%d frequencies", min->freq, max->freq);
+	log.debug("Detected heterogeneous CPUs with min:{} max:{} frequencies", min->freq, max->freq);
 	CPUMask mask{};
 	for(auto info : cpuFreqInfos)
 	{
@@ -454,7 +464,7 @@ void ApplicationContext::setSwappedConfirmKeys(std::optional<bool> opt)
 	time_t secs = duration_cast<Seconds>(time.time_since_epoch()).count();
 	if(!localtime_r(&secs, &localTime)) [[unlikely]]
 	{
-		logErr("localtime_r failed");
+		log.error("localtime_r failed");
 		return {};
 	}
 	std::string str;
@@ -523,14 +533,14 @@ namespace IG::FileUtils
 
 ssize_t writeToUri(ApplicationContext ctx, CStringView uri, std::span<const unsigned char> src)
 {
-	auto f = ctx.openFileUri(uri, OpenFlagsMask::New | OpenFlagsMask::Test);
+	auto f = ctx.openFileUri(uri, OpenFlags::testNewFile());
 	return f.write(src).bytes;
 }
 
 ssize_t readFromUri(ApplicationContext ctx, CStringView uri, std::span<unsigned char> dest,
 	IOAccessHint accessHint)
 {
-	auto f = ctx.openFileUri(uri, accessHint, OpenFlagsMask::Test);
+	auto f = ctx.openFileUri(uri, accessHint, {.test = true});
 	return f.read(dest).bytes;
 }
 
@@ -552,7 +562,7 @@ std::pair<ssize_t, FS::PathString> readFromUriWithArchiveScan(ApplicationContext
 				return {entry.releaseIO().read(dest).bytes, FS::PathString{name}};
 			}
 		}
-		logErr("no recognized files in archive:%s", uri.data());
+		log.error("no recognized files in archive:{}", uri);
 		return {-1, {}};
 	}
 	else
@@ -561,7 +571,7 @@ std::pair<ssize_t, FS::PathString> readFromUriWithArchiveScan(ApplicationContext
 	}
 }
 
-IOBuffer bufferFromUri(ApplicationContext ctx, CStringView uri, OpenFlagsMask openFlags, size_t sizeLimit)
+IOBuffer bufferFromUri(ApplicationContext ctx, CStringView uri, OpenFlags openFlags, size_t sizeLimit)
 {
 	if(!sizeLimit) [[unlikely]]
 		return {};
@@ -570,7 +580,7 @@ IOBuffer bufferFromUri(ApplicationContext ctx, CStringView uri, OpenFlagsMask op
 		return {};
 	else if(file.size() > sizeLimit)
 	{
-		if(to_underlying(openFlags & OpenFlagsMask::Test))
+		if(openFlags.test)
 			return {};
 		else
 			throw std::runtime_error(std::format("{} exceeds {} byte limit", uri, sizeLimit));
@@ -578,11 +588,11 @@ IOBuffer bufferFromUri(ApplicationContext ctx, CStringView uri, OpenFlagsMask op
 	return file.buffer(IOBufferMode::Release);
 }
 
-IOBuffer rwBufferFromUri(ApplicationContext ctx, CStringView uri, OpenFlagsMask extraOFlags, size_t size, uint8_t initValue)
+IOBuffer rwBufferFromUri(ApplicationContext ctx, CStringView uri, OpenFlags extraOFlags, size_t size, uint8_t initValue)
 {
 	if(!size) [[unlikely]]
 		return {};
-	auto file = ctx.openFileUri(uri, IOAccessHint::Random, OpenFlagsMask::CreateRW | extraOFlags);
+	auto file = ctx.openFileUri(uri, IOAccessHint::Random, OpenFlags::createFile() | extraOFlags);
 	if(!file) [[unlikely]]
 		return {};
 	auto fileSize = file.size();
@@ -601,13 +611,13 @@ FILE *fopenUri(ApplicationContext ctx, CStringView path, CStringView mode)
 	if(isUri(path))
 	{
 		assert(!mode.contains('a')); //append mode not supported
-		OpenFlagsMask openFlags{OpenFlagsMask::Test};
+		OpenFlags openFlags{.test = true};
 		if(mode.contains('r'))
-			openFlags |= OpenFlagsMask::Read;
+			openFlags.read = true;
 		if(mode.contains('w'))
-			openFlags |= OpenFlagsMask::New;
+			openFlags |= OpenFlags::newFile();
 		if(mode.contains('+'))
-			openFlags |= OpenFlagsMask::Write;
+			openFlags.write = true;
 		return ctx.openFileUri(path, openFlags).toFileStream(mode);
 	}
 	else

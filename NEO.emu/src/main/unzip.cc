@@ -20,6 +20,7 @@
 #include <imagine/fs/ArchiveFS.hh>
 #include <imagine/fs/FS.hh>
 #include <imagine/util/ScopeGuard.hh>
+#include <imagine/util/bit.hh>
 #include <imagine/logger/logger.h>
 #include <imagine/util/string.h>
 #include <cstdlib>
@@ -142,6 +143,6 @@ struct PKZIP *open_rom_zip(void *contextPtr, char *romPath, char *name)
 gzFile gzopenHelper(void *contextPtr, const char *filename, const char *mode)
 {
 	auto &ctx = *((IG::ApplicationContext*)contextPtr);
-	auto openFlags = std::string_view{mode}.contains('w') ? IG::OpenFlagsMask::New : IG::OpenFlagsMask{};
-	return gzdopen(ctx.openFileUriFd(filename, openFlags | IG::OpenFlagsMask::Test).release(), mode);
+	auto openFlags = std::string_view{mode}.contains('w') ? OpenFlags::newFile() : OpenFlags{};
+	return gzdopen(ctx.openFileUriFd(filename, openFlags | OpenFlags{.test = true}).release(), mode);
 }

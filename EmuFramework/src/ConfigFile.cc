@@ -15,12 +15,12 @@
 
 #include <emuframework/EmuApp.hh>
 #include "EmuOptions.hh"
-#include "privateInput.hh"
 #include "configFile.hh"
 #include <imagine/base/ApplicationContext.hh>
 #include <imagine/io/FileIO.hh>
 #include <imagine/fs/FS.hh>
 #include <imagine/input/config.hh>
+#include <imagine/bluetooth/sys.hh>
 #include <imagine/util/ScopeGuard.hh>
 
 namespace EmuEx
@@ -75,8 +75,6 @@ void EmuApp::saveConfigFile(FileIO &io)
 		optionOverlayEffectLevel,
 		optionFontSize,
 		optionPauseUnfocused,
-		optionEmuOrientation,
-		optionMenuOrientation,
 		optionConfirmOverwriteState,
 		optionFrameInterval,
 		optionNotificationIcon,
@@ -97,7 +95,9 @@ void EmuApp::saveConfigFile(FileIO &io)
 
 	std::apply([&](auto &...opt){ (writeOptionValue(io, opt), ...); }, cfgFileOptions);
 
-	writeRecentContent(io);
+	recentContent.writeConfig(io);
+	writeOptionValueIfNotDefault(io, CFGKEY_GAME_ORIENTATION, optionEmuOrientation, Orientations{});
+	writeOptionValueIfNotDefault(io, CFGKEY_MENU_ORIENTATION, optionMenuOrientation, Orientations{});
 	writeOptionValue(io, CFGKEY_BACK_NAVIGATION, viewManager.needsBackControlOption());
 	writeOptionValue(io, CFGKEY_SWAPPED_GAMEPAD_CONFIM, swappedConfirmKeysOption());
 	writeOptionValue(io, CFGKEY_AUDIO_SOLO_MIX, audioManager().soloMixOption());
@@ -150,18 +150,12 @@ void EmuApp::saveConfigFile(FileIO &io)
 		writeOptionValueIfNotDefault(io, CFGKEY_RENDERER_PRESENT_MODE, presentMode, Gfx::PresentMode::Auto);
 	if(used(usePresentationTime) && renderer.supportsPresentationTime())
 		writeOptionValueIfNotDefault(io, CFGKEY_RENDERER_PRESENTATION_TIME, usePresentationTime, true);
-
-	inputManager.writeCustomKeyConfigs(io);
-
-	// input device configs must be saved after key configs since
-	// they reference the key configs when read back from the config file
-	inputManager.writeSavedInputDevices(io);
-
 	writeStringOptionValue(io, CFGKEY_LAST_DIR, contentSearchPath());
 	writeStringOptionValue(io, CFGKEY_SAVE_PATH, system().userSaveDirectory());
 	writeStringOptionValue(io, CFGKEY_SCREENSHOTS_PATH, userScreenshotPath);
-
 	system().writeConfig(ConfigType::MAIN, io);
+	inputManager.writeCustomKeyConfigs(io);
+	inputManager.writeSavedInputDevices(appContext(), io);
 }
 
 EmuApp::ConfigParams EmuApp::loadConfigFile(IG::ApplicationContext ctx)
@@ -196,7 +190,7 @@ EmuApp::ConfigParams EmuApp::loadConfigFile(IG::ApplicationContext ctx)
 	#endif
 	ConfigParams appConfig{};
 	Gfx::DrawableConfig pendingWindowDrawableConf{};
-	readConfigKeys(FileUtils::bufferFromPath(configFilePath, OpenFlagsMask::Test),
+	readConfigKeys(FileUtils::bufferFromPath(configFilePath, {.test = true}),
 		[&](auto key, auto size, auto &io) -> bool
 		{
 			switch(key)
@@ -211,6 +205,8 @@ EmuApp::ConfigParams EmuApp::loadConfigFile(IG::ApplicationContext ctx)
 						return true;
 					if(emuAudio.readConfig(io, key, size))
 						return true;
+					if(recentContent.readConfig(io, key, size, system()))
+						return true;
 					logMsg("skipping key %u", (unsigned)key);
 					return false;
 				}
@@ -220,8 +216,8 @@ EmuApp::ConfigParams EmuApp::loadConfigFile(IG::ApplicationContext ctx)
 				case CFGKEY_LAST_DIR:
 					return readStringOptionValue<FS::PathString>(io, size, [&](auto &&path){setContentSearchPath(path);});
 				case CFGKEY_FONT_Y_SIZE: return optionFontSize.readFromIO(io, size);
-				case CFGKEY_GAME_ORIENTATION: return optionEmuOrientation.readFromIO(io, size);
-				case CFGKEY_MENU_ORIENTATION: return optionMenuOrientation.readFromIO(io, size);
+				case CFGKEY_GAME_ORIENTATION: return readOptionValue(io, size, optionEmuOrientation);
+				case CFGKEY_MENU_ORIENTATION: return readOptionValue(io, size, optionMenuOrientation);
 				case CFGKEY_GAME_IMG_FILTER: return optionImgFilter.readFromIO(io, size);
 				case CFGKEY_IMAGE_ZOOM: return optionImageZoom.readFromIO(io, size);
 				case CFGKEY_VIEWPORT_ZOOM: return optionViewportZoom.readFromIO(io, size);
@@ -236,7 +232,7 @@ EmuApp::ConfigParams EmuApp::loadConfigFile(IG::ApplicationContext ctx)
 				case CFGKEY_VIDEO_IMAGE_BUFFERS: return optionVideoImageBuffers.readFromIO(io, size);
 				case CFGKEY_OVERLAY_EFFECT: return optionOverlayEffect.readFromIO(io, size);
 				case CFGKEY_OVERLAY_EFFECT_LEVEL: return optionOverlayEffectLevel.readFromIO(io, size);
-				case CFGKEY_RECENT_GAMES: return readRecentContent(ctx, io, size);
+				case CFGKEY_RECENT_CONTENT: return recentContent.readLegacyConfig(io, system());
 				case CFGKEY_SWAPPED_GAMEPAD_CONFIM:
 					setSwappedConfirmKeys(readOptionValue<bool>(io, size));
 					return true;
@@ -298,8 +294,8 @@ EmuApp::ConfigParams EmuApp::loadConfigFile(IG::ApplicationContext ctx)
 				case CFGKEY_VIDEO_LANDSCAPE_OFFSET: return readOptionValue(io, size, videoLayer().landscapeOffset, [](auto v){return v >= -4096 && v <= 4096;});
 				case CFGKEY_VIDEO_PORTRAIT_OFFSET: return readOptionValue(io, size, videoLayer().portraitOffset, [](auto v){return v >= -4096 && v <= 4096;});
 				case CFGKEY_VIDEO_BRIGHTNESS: return readOptionValue(io, size, videoBrightnessRGB);
-				case CFGKEY_INPUT_KEY_CONFIGS: return inputManager.readCustomKeyConfigs(io, size, inputControlCategories());
-				case CFGKEY_INPUT_DEVICE_CONFIGS: return inputManager.readSavedInputDevices(io, size);
+				case CFGKEY_INPUT_KEY_CONFIGS_V2: return inputManager.readCustomKeyConfig(io);
+				case CFGKEY_INPUT_DEVICE_CONFIGS: return inputManager.readSavedInputDevices(io);
 			}
 			return false;
 		});
@@ -320,7 +316,7 @@ void EmuApp::saveConfigFile(IG::ApplicationContext ctx)
 	auto configFilePath = FS::pathString(ctx.supportPath(), "config");
 	try
 	{
-		FileIO file{configFilePath, OpenFlagsMask::New};
+		FileIO file{configFilePath, OpenFlags::newFile()};
 		saveConfigFile(file);
 	}
 	catch(...)

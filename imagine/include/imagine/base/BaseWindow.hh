@@ -18,7 +18,7 @@
 #include <imagine/config/defs.hh>
 #include <imagine/base/CustomEvent.hh>
 #include <imagine/base/ApplicationContext.hh>
-#include <imagine/input/Input.hh>
+#include <imagine/input/Event.hh>
 #include <imagine/util/DelegateFunc.hh>
 #include <imagine/util/DelegateFuncSet.hh>
 #include <imagine/util/Point2D.hh>
@@ -66,7 +66,7 @@ protected:
 	DrawPhase drawPhase{DrawPhase::READY};
 	int8_t drawEventPriority_{};
 	// all windows need an initial onSurfaceChange call
-	uint8_t surfaceChangeFlags{SurfaceChange::SURFACE_RESIZED | SurfaceChange::CONTENT_RECT_RESIZED};
+	WindowSurfaceChangeFlags surfaceChangeFlags{.surfaceResized = true, .contentRectResized = true};
 	IG_UseMemberIfOrConstant(!Config::SYSTEM_ROTATES_WINDOWS, Rotation, Rotation::UP, softOrientation_){Rotation::UP};
 
 	F2Size smmPixelScaler() const;

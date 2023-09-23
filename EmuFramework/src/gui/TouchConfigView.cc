@@ -15,6 +15,7 @@
 
 #include <emuframework/TouchConfigView.hh>
 #include <emuframework/EmuApp.hh>
+#include <emuframework/AppKeyCode.hh>
 #include <imagine/gui/AlertView.hh>
 #include <imagine/gui/TextTableView.hh>
 #include <imagine/gfx/RendererCommands.hh>
@@ -22,7 +23,6 @@
 #include <imagine/logger/logger.h>
 #include "PlaceVideoView.hh"
 #include "PlaceVControlsView.hh"
-#include "../privateInput.hh"
 #include <utility>
 #include <vector>
 #include <array>
@@ -53,17 +53,18 @@ constexpr int touchCtrlExtraBtnSizeMenuVal[4]
 static void drawVControllerElement(Gfx::RendererCommands &__restrict__ cmds, const VControllerElement &elem, size_t layoutIdx)
 {
 	cmds.set(Gfx::BlendMode::PREMULT_ALPHA);
-	elem.draw(cmds, .75, layoutIdx);
+	elem.draw(cmds, layoutIdx);
 }
 
 static void addCategories(EmuApp &app, VControllerElement &elem, auto &&addCategory)
 {
 	if(elem.uiButtonGroup())
-		addCategory(app.inputControlCategories()[0]);
+	{
+		addCategory(appKeyCategory);
+	}
 	else
 	{
-		for(auto &cat : app.inputControlCategories() | std::views::drop(1)
-			| std::views::filter([](auto &c){return !c.multiplayerIndex;}))
+		for(auto &cat : EmuApp::keyCategories() | std::views::filter([](auto &c){return !c.multiplayerIndex;}))
 		{
 			addCategory(cat);
 		}
@@ -218,19 +219,19 @@ public:
 		actions
 		{
 			{
-				"Up", app().systemKeyName(elem.dPad()->config.keys[0]), &defaultFace(),
+				"Up", app().inputManager.toString(elem.dPad()->config.keys[0]), &defaultFace(),
 				[this](const Input::Event &e) { assignAction(0, e); }
 			},
 			{
-				"Right", app().systemKeyName(elem.dPad()->config.keys[1]), &defaultFace(),
+				"Right", app().inputManager.toString(elem.dPad()->config.keys[1]), &defaultFace(),
 				[this](const Input::Event &e) { assignAction(1, e); }
 			},
 			{
-				"Down", app().systemKeyName(elem.dPad()->config.keys[2]), &defaultFace(),
+				"Down", app().inputManager.toString(elem.dPad()->config.keys[2]), &defaultFace(),
 				[this](const Input::Event &e) { assignAction(2, e); }
 			},
 			{
-				"Left", app().systemKeyName(elem.dPad()->config.keys[3]), &defaultFace(),
+				"Left", app().inputManager.toString(elem.dPad()->config.keys[3]), &defaultFace(),
 				[this](const Input::Event &e) { assignAction(3, e); }
 			}
 		} {}
@@ -239,6 +240,11 @@ public:
 	{
 		drawVControllerElement(cmds, elem, window().isPortrait());
 		TableView::draw(cmds);
+	}
+
+	void onShow() final
+	{
+		vCtrl.applyButtonAlpha(.75);
 	}
 
 private:
@@ -263,13 +269,13 @@ private:
 		auto multiChoiceView = makeViewWithName<TextTableView>("Assign Action", 16);
 		addCategories(app(), elem, [&](const KeyCategory &cat)
 		{
-			for(auto i : iotaCount(cat.keys()))
+			for(auto &k : cat.keys)
 			{
-				multiChoiceView->appendItem(cat.keyName[i],
-					[this, keyCode = cat.configOffset + i](TextMenuItem &item, View &parentView, const Input::Event &)
+				multiChoiceView->appendItem(app().inputManager.toString(k),
+					[this, k](TextMenuItem &item, View &parentView, const Input::Event &)
 					{
-						elem.dPad()->config.keys[item.id()] = keyCode;
-						actions[item.id()].set2ndName(app().systemKeyName(keyCode));
+						elem.dPad()->config.keys[item.id()] = k;
+						actions[item.id()].set2ndName(app().inputManager.toString(k));
 						parentView.dismiss();
 					}).setId(idx);
 			}
@@ -291,19 +297,22 @@ public:
 		onChange{onChange_},
 		key
 		{
-			"Action", app().systemKeyName(btn_.key), &defaultFace(),
+			"Action", app().inputManager.toString(btn_.key), &defaultFace(),
 			[this](const Input::Event &e)
 			{
 				auto multiChoiceView = makeViewWithName<TextTableView>("Assign Action", 16);
 				addCategories(app(), elem, [&](const KeyCategory &cat)
 				{
-					for(auto i : iotaCount(cat.keys()))
+					for(auto &k : cat.keys)
 					{
-						multiChoiceView->appendItem(cat.keyName[i],
-							[this, keyCode = cat.configOffset + i](View &parentView)
+						multiChoiceView->appendItem(app().inputManager.toString(k),
+							[this, k](View &parentView)
 							{
-								btn.key = keyCode;
-								key.set2ndName(app().systemKeyName(keyCode));
+								btn.key = k;
+								btn.enabled = vCtrl.keyIsEnabled(k);
+								key.set2ndName(app().inputManager.toString(k));
+								turbo.setBoolValue(k.flags.turbo, *this);
+								toggle.setBoolValue(k.flags.toggle, *this);
 								vCtrl.update(elem);
 								onChange.callSafe();
 								vCtrl.place();
@@ -312,6 +321,30 @@ public:
 					}
 				});
 				pushAndShow(std::move(multiChoiceView), e);
+			}
+		},
+		turbo
+		{
+			"Turbo", &defaultFace(),
+			bool(btn_.key.flags.turbo),
+			[this](BoolMenuItem &item)
+			{
+				btn.key.flags.turbo = item.flipBoolValue(*this);
+				key.set2ndName(app().inputManager.toString(btn.key));
+				key.compile2nd(renderer());
+				onChange.callSafe();
+			}
+		},
+		toggle
+		{
+			"Toggle", &defaultFace(),
+			bool(btn_.key.flags.toggle),
+			[this](BoolMenuItem &item)
+			{
+				btn.key.flags.toggle = item.flipBoolValue(*this);
+				key.set2ndName(app().inputManager.toString(btn.key));
+				key.compile2nd(renderer());
+				onChange.callSafe();
 			}
 		},
 		remove
@@ -331,7 +364,10 @@ public:
 						}
 					}), e);
 			}
-		} {}
+		}
+	{
+		reloadItems();
+	}
 
 private:
 	VController &vCtrl;
@@ -339,8 +375,22 @@ private:
 	VControllerButton &btn;
 	OnChange onChange;
 	DualTextMenuItem key;
+	BoolMenuItem turbo;
+	BoolMenuItem toggle;
 	TextMenuItem remove;
-	std::array<MenuItem*, 2> item{&key, &remove};
+	std::vector<MenuItem*> item;
+
+	void reloadItems()
+	{
+		item.clear();
+		item.emplace_back(&key);
+		if(!btn.key.flags.appCode)
+		{
+			item.emplace_back(&turbo);
+			item.emplace_back(&toggle);
+		}
+		item.emplace_back(&remove);
+	}
 };
 
 class ButtonGroupElementConfigView : public TableView, public EmuAppHelper<ButtonGroupElementConfigView>
@@ -512,12 +562,12 @@ public:
 				auto multiChoiceView = makeViewWithName<TextTableView>("Add Button", 16);
 				addCategories(app(), elem, [&](const KeyCategory &cat)
 				{
-					for(auto i : iotaCount(cat.keys()))
+					for(auto &k : cat.keys)
 					{
-						multiChoiceView->appendItem(cat.keyName[i],
-							[this, keyCode = cat.configOffset + i](View &parentView, const Input::Event &e)
+						multiChoiceView->appendItem(app().inputManager.toString(k),
+							[this, k](View &parentView, const Input::Event &e)
 							{
-								elem.add(keyCode);
+								elem.add(k);
 								vCtrl.update(elem);
 								vCtrl.place();
 								confView.reloadItems();
@@ -556,6 +606,11 @@ public:
 	{
 		drawVControllerElement(cmds, elem, window().isPortrait());
 		TableView::draw(cmds);
+	}
+
+	void onShow() final
+	{
+		vCtrl.applyButtonAlpha(.75);
 	}
 
 private:
@@ -655,7 +710,7 @@ private:
 
 void TouchConfigView::draw(Gfx::RendererCommands &__restrict__ cmds)
 {
-	vController().draw(cmds, true, .75);
+	vController.draw(cmds, true);
 	TableView::draw(cmds);
 }
 
@@ -667,21 +722,21 @@ void TouchConfigView::place()
 
 void TouchConfigView::refreshTouchConfigMenu()
 {
-	alpha.setSelected((MenuItem::Id)vController().buttonAlpha(), *this);
-	touchCtrl.setSelected((int)vController().gamepadControlsVisibility(), *this);
+	alpha.setSelected((MenuItem::Id)vController.buttonAlpha(), *this);
+	touchCtrl.setSelected((int)vController.gamepadControlsVisibility(), *this);
 	if(EmuSystem::maxPlayers > 1)
-		pointerInput.setSelected((int)vController().inputPlayer(), *this);
-	size.setSelected((MenuItem::Id)vController().buttonSize(), *this);
+		pointerInput.setSelected((int)vController.inputPlayer(), *this);
+	size.setSelected((MenuItem::Id)vController.buttonSize(), *this);
 	if(app().vibrationManager().hasVibrator())
 	{
-		vibrate.setBoolValue(vController().vibrateOnTouchInput(), *this);
+		vibrate.setBoolValue(vController.vibrateOnTouchInput(), *this);
 	}
-	showOnTouch.setBoolValue(vController().showOnTouchInput(), *this);
+	showOnTouch.setBoolValue(vController.showOnTouchInput(), *this);
 }
 
 TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 	TableView{"On-screen Input Setup", attach, item},
-	vControllerPtr{&vCtrl},
+	vController{vCtrl},
 	touchCtrlItem
 	{
 		{"Off",  &defaultFace(), to_underlying(VControllerVisibility::OFF)},
@@ -692,7 +747,7 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 	{
 		"Use Virtual Gamepad", &defaultFace(),
 		{
-			.defaultItemOnSelect = [this](TextMenuItem &item){ vController().setGamepadControlsVisibility(VControllerVisibility(item.id())); }
+			.defaultItemOnSelect = [this](TextMenuItem &item){ vController.setGamepadControlsVisibility(VControllerVisibility(item.id())); }
 		},
 		int(vCtrl.gamepadControlsVisibility()),
 		touchCtrlItem
@@ -709,7 +764,7 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 	{
 		"Virtual Gamepad Player", &defaultFace(),
 		{
-			.defaultItemOnSelect = [this](TextMenuItem &item){ vController().setInputPlayer(item.id()); }
+			.defaultItemOnSelect = [this](TextMenuItem &item){ vController.setInputPlayer(item.id()); }
 		},
 		int(vCtrl.inputPlayer()),
 		std::span{pointerInputItem, size_t(EmuSystem::maxPlayers)}
@@ -733,7 +788,7 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 					[this](EmuApp &app, auto val)
 					{
 						int scaledIntVal = val * 100.0;
-						if(vController().setButtonSize(scaledIntVal))
+						if(vController.setButtonSize(scaledIntVal))
 						{
 							size.setSelected((MenuItem::Id)scaledIntVal, *this);
 							dismissPrevious();
@@ -755,30 +810,39 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 		{
 			.onSetDisplayString = [this](auto idx, Gfx::Text &t)
 			{
-				t.resetString(std::format("{:g}mm", vController().buttonSize() / 100.));
+				t.resetString(std::format("{:g}mm", vController.buttonSize() / 100.));
 				return true;
 			},
-			.defaultItemOnSelect = [this](TextMenuItem &item){ vController().setButtonSize(item.id()); }
+			.defaultItemOnSelect = [this](TextMenuItem &item){ vController.setButtonSize(item.id()); }
 		},
-		(MenuItem::Id)vController().buttonSize(),
+		(MenuItem::Id)vController.buttonSize(),
 		sizeItem
 	},
 	vibrate
 	{
 		"Vibration", &defaultFace(),
-		vController().vibrateOnTouchInput(),
+		vController.vibrateOnTouchInput(),
 		[this](BoolMenuItem &item)
 		{
-			vController().setVibrateOnTouchInput(app(), item.flipBoolValue(*this));
+			vController.setVibrateOnTouchInput(app(), item.flipBoolValue(*this));
 		}
 	},
 	showOnTouch
 	{
 		"Show Gamepad If Screen Touched", &defaultFace(),
-		vController().showOnTouchInput(),
+		vController.showOnTouchInput(),
 		[this](BoolMenuItem &item)
 		{
-			vController().setShowOnTouchInput(item.flipBoolValue(*this));
+			vController.setShowOnTouchInput(item.flipBoolValue(*this));
+		}
+	},
+	highlightPushedButtons
+	{
+		"Highlight Pushed Buttons", &defaultFace(),
+		vController.highlightPushedButtons,
+		[this](BoolMenuItem &item)
+		{
+			vController.highlightPushedButtons = item.flipBoolValue(*this);
 		}
 	},
 	alphaItem
@@ -794,9 +858,9 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 	{
 		"Blend Amount", &defaultFace(),
 		{
-			.defaultItemOnSelect = [this](TextMenuItem &item){ vController().setButtonAlpha(item.id()); }
+			.defaultItemOnSelect = [this](TextMenuItem &item){ vController.setButtonAlpha(item.id()); }
 		},
-		(MenuItem::Id)vController().buttonAlpha(),
+		(MenuItem::Id)vController.buttonAlpha(),
 		alphaItem
 	},
 	btnPlace
@@ -804,7 +868,7 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 		"Set Button Positions", &defaultFace(),
 		[this](const Input::Event &e)
 		{
-			pushAndShowModal(makeView<PlaceVControlsView>(vController()), e);
+			pushAndShowModal(makeView<PlaceVControlsView>(vController), e);
 		}
 	},
 	placeVideo
@@ -814,7 +878,7 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 		{
 			if(!system().hasContent())
 				return;
-			pushAndShowModal(makeView<PlaceVideoView>(app().videoLayer(), vController()), e);
+			pushAndShowModal(makeView<PlaceVideoView>(app().videoLayer(), vController), e);
 		}
 	},
 	addButton
@@ -822,17 +886,17 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 		"Add New Button Group", &defaultFace(),
 		[this](const Input::Event &e)
 		{
-			pushAndShow(makeView<AddNewButtonView>(*this, vController()), e);
+			pushAndShow(makeView<AddNewButtonView>(*this, vController), e);
 		}
 	},
 	allowButtonsPastContentBounds
 	{
 		"Allow Buttons In Display Cutout Area", &defaultFace(),
-		vController().allowButtonsPastContentBounds(),
+		vController.allowButtonsPastContentBounds(),
 		[this](BoolMenuItem &item)
 		{
-			vController().setAllowButtonsPastContentBounds(item.flipBoolValue(*this));
-			vController().place();
+			vController.setAllowButtonsPastContentBounds(item.flipBoolValue(*this));
+			vController.place();
 		}
 	},
 	resetEmuPositions
@@ -845,8 +909,8 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 				{
 					.onYes = [this]
 					{
-						vController().resetEmulatedDevicePositions();
-						vController().place();
+						vController.resetEmulatedDevicePositions();
+						vController.place();
 					}
 				}), e);
 		}
@@ -861,8 +925,8 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 				{
 					.onYes = [this]
 					{
-						vController().resetEmulatedDeviceGroups();
-						vController().place();
+						vController.resetEmulatedDeviceGroups();
+						vController.place();
 						reloadItems();
 					}
 				}), e);
@@ -878,8 +942,8 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 				{
 					.onYes = [this]
 					{
-						vController().resetUIPositions();
-						vController().place();
+						vController.resetUIPositions();
+						vController.place();
 					}
 				}), e);
 		}
@@ -894,8 +958,8 @@ TouchConfigView::TouchConfigView(ViewAttachParams attach, VController &vCtrl):
 				{
 					.onYes = [this]
 					{
-						vController().resetUIGroups();
-						vController().place();
+						vController.resetUIGroups();
+						vController.place();
 						reloadItems();
 					}
 				}), e);
@@ -931,8 +995,8 @@ void TouchConfigView::reloadItems()
 	placeVideo.setActive(system().hasContent());
 	item.emplace_back(&placeVideo);
 	item.emplace_back(&devButtonsHeading);
-	elementItems.reserve(vController().deviceElements().size() + vController().guiElements().size());
-	for(auto &elem : vController().deviceElements())
+	elementItems.reserve(vController.deviceElements().size() + vController.guiElements().size());
+	for(auto &elem : vController.deviceElements())
 	{
 		auto &i = elementItems.emplace_back(
 			elem.name(app()), &defaultFace(),
@@ -940,15 +1004,15 @@ void TouchConfigView::reloadItems()
 			{
 				visit(overloaded
 				{
-					[&](VControllerDPad &){ pushAndShow(makeView<DPadElementConfigView>(*this, vController(), elem), e); },
-					[&](VControllerButtonGroup &){ pushAndShow(makeView<ButtonGroupElementConfigView>(*this, vController(), elem), e); },
+					[&](VControllerDPad &){ pushAndShow(makeView<DPadElementConfigView>(*this, vController, elem), e); },
+					[&](VControllerButtonGroup &){ pushAndShow(makeView<ButtonGroupElementConfigView>(*this, vController, elem), e); },
 					[](auto &){}
 				}, elem);
 			});
 		item.emplace_back(&i);
 	}
 	item.emplace_back(&uiButtonsHeading);
-	for(auto &elem : vController().guiElements())
+	for(auto &elem : vController.guiElements())
 	{
 		auto &i = elementItems.emplace_back(
 			elem.name(app()), &defaultFace(),
@@ -956,7 +1020,7 @@ void TouchConfigView::reloadItems()
 			{
 				visit(overloaded
 				{
-					[&](VControllerUIButtonGroup &){ pushAndShow(makeView<ButtonGroupElementConfigView>(*this, vController(), elem), e); },
+					[&](VControllerUIButtonGroup &){ pushAndShow(makeView<ButtonGroupElementConfigView>(*this, vController, elem), e); },
 					[](auto &){}
 				}, elem);
 			});
@@ -973,11 +1037,17 @@ void TouchConfigView::reloadItems()
 		item.emplace_back(&vibrate);
 	}
 	item.emplace_back(&showOnTouch);
+	item.emplace_back(&highlightPushedButtons);
 	item.emplace_back(&alpha);
 	item.emplace_back(&resetEmuPositions);
 	item.emplace_back(&resetEmuGroups);
 	item.emplace_back(&resetUIPositions);
 	item.emplace_back(&resetUIGroups);
+}
+
+void TouchConfigView::onShow()
+{
+	vController.applyButtonAlpha(.75);
 }
 
 }

@@ -16,10 +16,12 @@
 	along with Imagine.  If not, see <http://www.gnu.org/licenses/> */
 
 #include <imagine/util/utility.h>
+#include <imagine/util/algorithm.h>
 #include <cstdint>
 #include <array>
 #include <span>
 #include <tuple>
+#include <cassert>
 
 namespace IG
 {
@@ -47,6 +49,78 @@ struct ArrayView2
 	constexpr T *data() { return arr; }
 };
 
+// Static array for storing non-null elements, terminated by null
+template<class T, size_t maxSize>
+class ZArray : public std::array<T, maxSize>
+{
+public:
+	using Base = std::array<T, maxSize>;
+	using iterator = Base::iterator;
+	using const_iterator = Base::const_iterator;
+
+	// Define constructor so underlying array is zero-init
+	constexpr ZArray(auto &&...args): Base{IG_forward(args)...} {}
+	constexpr size_t size() const { return findIndex(std::span{this->data(), maxSize}, T{}, maxSize); }
+	constexpr size_t capacity() const { return maxSize; }
+	constexpr auto end() { return this->data() + size(); }
+	constexpr auto end() const { return this->data() + size(); }
+	constexpr auto cend() const { return this->data() + size(); }
+	constexpr size_t freeSpace() const { return capacity() - size(); }
+	constexpr bool isFull() const { return !freeSpace(); }
+
+	constexpr void push_back(const T &val)
+	{
+		assert(size() < capacity());
+		this->data()[size()] = val;
+	}
+
+	constexpr iterator insert(const_iterator position, const T &val)
+	{
+		assert(size() < maxSize);
+		iterator p = this->data() + (position - this->begin());
+		if(p == end())
+		{
+			push_back(val);
+		}
+		else
+		{
+			std::move_backward(p, end(), end() + 1);
+			*p = val;
+		}
+		return p;
+	}
+
+	constexpr bool tryPushBack(const T &val)
+	{
+		if(isFull())
+			return false;
+		push_back(val);
+		return true;
+	}
+
+	constexpr bool tryInsert(const_iterator position, const T &val)
+	{
+		if(isFull())
+			return false;
+		insert(position, val);
+		return true;
+	}
+};
+
+template <class T, size_t size>
+class RingArray: public std::array<T, size>
+{
+public:
+	constexpr void push_back(const T &e)
+	{
+		this->data()[writeIdx] = e;
+		writeIdx = (writeIdx + 1) % size;
+	}
+
+private:
+	size_t writeIdx{};
+};
+
 constexpr auto toArray = [](auto &&...vals){ return std::array{IG_forward(vals)...}; };
 
 constexpr auto concatToArray(auto &&...vals)
@@ -56,5 +130,11 @@ constexpr auto concatToArray(auto &&...vals)
 
 template <auto ...vals>
 static constexpr auto concatToArrayNow = concatToArray(vals...);
+
+template <typename Type, typename... Values>
+constexpr auto makeArray(Values &&... v) -> std::array <Type, sizeof...(Values)>
+{
+	return {{std::forward<Values>(v)...}};
+}
 
 }

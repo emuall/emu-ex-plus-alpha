@@ -141,14 +141,14 @@ FS::PathString ApplicationContext::libPath(const char *) const
 	return {};
 }
 
-FileIO ApplicationContext::openFileUri(CStringView uri, IOAccessHint access, OpenFlagsMask openFlags) const
+FileIO ApplicationContext::openFileUri(CStringView uri, IOAccessHint access, OpenFlags openFlags) const
 {
 	if(androidSDK() < 19 || !isUri(uri))
 		return {uri, access, openFlags};
 	return {application().openFileUriFd(thisThreadJniEnv(), baseActivityObject(), uri, openFlags), access, openFlags};
 }
 
-UniqueFileDescriptor ApplicationContext::openFileUriFd(CStringView uri, OpenFlagsMask openFlags) const
+UniqueFileDescriptor ApplicationContext::openFileUriFd(CStringView uri, OpenFlags openFlags) const
 {
 	if(androidSDK() < 19 || !isUri(uri))
 		return PosixIO{uri, openFlags}.releaseFd();
@@ -212,7 +212,7 @@ bool ApplicationContext::removeDirectoryUri(CStringView uri) const
 }
 
 bool ApplicationContext::forEachInDirectoryUri(CStringView uri, DirectoryEntryDelegate del,
-	FS::DirOpenFlagsMask flags) const
+	FS::DirOpenFlags flags) const
 {
 	if(androidSDK() < 21 || !isUri(uri))
 	{
@@ -280,7 +280,7 @@ bool ApplicationContext::hasHardwareNavButtons() const
 int32_t ApplicationContext::androidSDK() const
 {
 	#ifdef ANDROID_COMPAT_API
-	static_assert(__ANDROID_API__ <= 19, "Compiling with ANDROID_COMPAT_API and API higher than 19");
+	static_assert(__ANDROID_API__ <= 21, "Compiling with ANDROID_COMPAT_API and API higher than 21");
 	#endif
 	return std::max(ANDROID_MIN_API, act->sdkVersion);
 }
@@ -310,7 +310,7 @@ void ApplicationContext::endIdleByUserActivity()
 	application().endIdleByUserActivity(*this);
 }
 
-void ApplicationContext::setSysUIStyle(uint32_t flags)
+void ApplicationContext::setSysUIStyle(SystemUIStyleFlags flags)
 {
 	return application().setSysUIStyle(mainThreadJniEnv(), baseActivityObject(), androidSDK(), flags);
 }

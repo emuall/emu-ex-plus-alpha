@@ -15,7 +15,7 @@
 	You should have received a copy of the GNU General Public License
 	along with EmuFramework.  If not, see <http://www.gnu.org/licenses/> */
 
-#include <imagine/config/env.hh>
+#include <imagine/config/defs.hh>
 #include <imagine/input/config.hh>
 #include <imagine/bluetooth/config.hh>
 
@@ -25,11 +25,6 @@
 #define PLATFORM_INFO_STR "(" CONFIG_ARCH_STR ")"
 #endif
 #define CREDITS_INFO_STRING "Built : " __DATE__ "\n" PLATFORM_INFO_STR "\n\n"
-
-#if defined CONFIG_INPUT_KEYBOARD_DEVICES
-#define CONFIG_INPUT_ICADE
-#endif
-
 
 namespace EmuEx
 {
@@ -47,5 +42,6 @@ constexpr bool HAS_MULTIPLE_WINDOW_PIXEL_FORMATS = Config::envIsLinux || Config:
 constexpr bool MOGA_INPUT = Config::envIsAndroid;
 constexpr bool CAN_HIDE_TITLE_BAR = !Config::envIsIOS;
 constexpr bool enableFrameTimeStats = Config::DEBUG_BUILD;
+constexpr bool hasICadeInput = Config::Input::KEYBOARD_DEVICES;
 
 }

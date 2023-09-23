@@ -16,13 +16,8 @@
 	along with Imagine.  If not, see <http://www.gnu.org/licenses/> */
 
 #include <imagine/config/defs.hh>
-#include <imagine/base/Viewport.hh>
 #include <imagine/pixmap/PixelDesc.hh>
-#include <imagine/util/Point2D.hh>
 #include <imagine/util/rectangle2.h>
-#include <imagine/util/DelegateFunc.hh>
-#include <optional>
-#include <stdexcept>
 #include <array>
 
 #ifdef CONFIG_GFX_OPENGL
@@ -36,6 +31,8 @@ class Renderer;
 class RendererTask;
 class RendererCommands;
 class SyncFence;
+struct TextureBufferFlags;
+struct TextureWriteFlags;
 class TextureConfig;
 class Texture;
 class PixmapBufferTexture;
@@ -125,6 +122,7 @@ struct Color4F
 	constexpr Color4F(float r, float g, float b, float a = 1.f):
 		r{r}, g{g}, b{b}, a{a} {}
 	constexpr Color4F(std::array<float, 4> rgba): rgba{rgba} {}
+	constexpr Color4F(float i): Color4F{i, i, i, i} {}
 
 	constexpr Color4F(ColorName c):
 		rgba
@@ -146,6 +144,10 @@ struct Color4F
 			}()
 		} {}
 
+	[[nodiscard]]
+	constexpr Color4F multiplyAlpha() const { return {r * a, g * a, b * a, a}; }
+	[[nodiscard]]
+	constexpr Color4F multiplyRGB(float l) const { return {r * l, g * l, b * l, a}; }
 	constexpr operator Color4B() const;
 	constexpr operator std::array<float, 4>() const { return rgba; }
 	constexpr bool operator ==(Color4F const &rhs) const { return rgba == rhs.rgba; }
@@ -196,12 +198,6 @@ constexpr Color4F::operator Color4B() const { return Color4B::format.build(r, g,
 using PackedColor = Color4B;
 using Color = Color4F;
 
-// converts to a relative rectangle in OpenGL coordinate system
-constexpr Rect2<int> asYUpRelRect(Viewport v)
-{
-	return {{v.realBounds().x, v.realOriginBounds().ySize() - v.realBounds().y2}, {v.realWidth(), v.realHeight()}};
-}
-
 enum class AttribType
 {
 	UByte = 1,
@@ -220,5 +216,12 @@ struct AttribDesc
 
 constexpr bool supportsPresentModes = Config::envIsLinux || Config::envIsAndroid;
 constexpr bool supportsPresentationTime = Config::envIsAndroid;
+
+struct GlyphSetMetrics
+{
+	int16_t nominalHeight{};
+	int16_t spaceSize{};
+	int16_t yLineStart{};
+};
 
 }

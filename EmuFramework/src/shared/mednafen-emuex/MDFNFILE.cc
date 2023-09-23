@@ -13,10 +13,10 @@
 	You should have received a copy of the GNU General Public License
 	along with EmuFramework.  If not, see <http://www.gnu.org/licenses/> */
 
-#define LOGTAG "MDFNFILE"
 #include <imagine/io/FileIO.hh>
 #include <imagine/fs/ArchiveFS.hh>
 #include <imagine/util/string.h>
+#include <imagine/util/bit.hh>
 #include <imagine/base/ApplicationContext.hh>
 #include <imagine/logger/logger.h>
 #include <mednafen/types.h>
@@ -33,6 +33,8 @@ IG::ApplicationContext gAppContext();
 
 namespace Mednafen
 {
+
+constexpr IG::SystemLogger log{"MDFNFILE"};
 
 static bool hasKnownExtension(std::string_view name, const std::vector<FileExtensionSpecStruct>& extSpec)
 {
@@ -59,7 +61,7 @@ MDFNFILE::MDFNFILE(VirtualFS* vfs, const std::string& path, const std::vector<Fi
 				}
 				if(hasKnownExtension(entry.name(), known_ext))
 				{
-					logMsg("archive file entry:%s", entry.name().data());
+					log.info("archive file entry:{}", entry.name());
 					auto io = entry.releaseIO();
 					str = std::make_unique<MemoryStream>(io.size(), true);
 					if(io.read(str->map(), str->map_size()) != (int)str->map_size())
@@ -87,8 +89,8 @@ MDFNFILE::MDFNFILE(VirtualFS* vfs, std::unique_ptr<Stream> str):
 
 extern int openFdHelper(const char *file, int oflag, mode_t mode)
 {
-	auto openFlags = (oflag & O_CREAT) ? IG::OpenFlagsMask::New : IG::OpenFlagsMask{};
-	return EmuEx::gAppContext().openFileUriFd(file, openFlags | IG::OpenFlagsMask::Test).release();
+	auto openFlags = (oflag & O_CREAT) ? IG::OpenFlags::newFile() : IG::OpenFlags{};
+	return EmuEx::gAppContext().openFileUriFd(file, openFlags | IG::OpenFlags{.test = true}).release();
 }
 
 extern FILE *fopenHelper(const char* filename, const char* mode)

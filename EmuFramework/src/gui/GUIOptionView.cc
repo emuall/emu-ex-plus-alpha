@@ -211,42 +211,57 @@ GUIOptionView::GUIOptionView(ViewAttachParams attach, bool customMenu):
 			app().showHiddenFilesInPicker = item.flipBoolValue(*this);
 		}
 	},
+	maxRecentContent
+	{
+		"Max Recent Content Items", std::to_string(app().recentContent.maxRecentContent), &defaultFace(),
+		[this](const Input::Event &e)
+		{
+			app().pushAndShowNewCollectValueRangeInputView<int, 1, 100>(attachParams(), e,
+				"Input 1 to 100", std::to_string(app().recentContent.maxRecentContent),
+				[this](EmuApp &app, auto val)
+				{
+					app.recentContent.maxRecentContent = val;
+					maxRecentContent.set2ndName(std::to_string(val));
+					return true;
+				});
+		}
+	},
 	orientationHeading
 	{
 		"Orientation", &defaultBoldFace()
 	},
 	menuOrientationItem
 	{
-		{"Auto",         &defaultFace(), to_underlying(OrientationMask::UNSET)},
-		{landscapeName,  &defaultFace(), to_underlying(OrientationMask::LANDSCAPE_RIGHT)},
-		{landscape2Name, &defaultFace(), to_underlying(OrientationMask::LANDSCAPE_LEFT)},
-		{portraitName,   &defaultFace(), to_underlying(OrientationMask::PORTRAIT)},
-		{portrait2Name,  &defaultFace(), to_underlying(OrientationMask::PORTRAIT_UPSIDE_DOWN)},
+		{"Auto",         &defaultFace(), Orientations{}},
+		{landscapeName,  &defaultFace(), Orientations{.landscapeRight = 1}},
+		{landscape2Name, &defaultFace(), Orientations{.landscapeLeft = 1}},
+		{portraitName,   &defaultFace(), Orientations{.portrait = 1}},
+		{portrait2Name,  &defaultFace(), Orientations{.portraitUpsideDown = 1}},
 	},
 	menuOrientation
 	{
 		"In Menu", &defaultFace(),
 		{
-			.defaultItemOnSelect = [this](TextMenuItem &item) { app().setMenuOrientation(OrientationMask(item.id())); }
+			.defaultItemOnSelect = [this](TextMenuItem &item) { app().setMenuOrientation(std::bit_cast<Orientations>(uint8_t(item.id()))); }
 		},
-		(MenuItem::Id)app().menuOrientation(),
+		MenuItem::Id(uint8_t(app().menuOrientation())),
 		menuOrientationItem
 	},
 	emuOrientationItem
 	{
-		{"Auto",         &defaultFace(), to_underlying(OrientationMask::UNSET)},
-		{landscapeName,  &defaultFace(), to_underlying(OrientationMask::LANDSCAPE_RIGHT)},
-		{landscape2Name, &defaultFace(), to_underlying(OrientationMask::LANDSCAPE_LEFT)},
-		{portraitName,   &defaultFace(), to_underlying(OrientationMask::PORTRAIT)},
-		{portrait2Name,  &defaultFace(), to_underlying(OrientationMask::PORTRAIT_UPSIDE_DOWN)},
+		{"Auto",         &defaultFace(), Orientations{}},
+		{landscapeName,  &defaultFace(), Orientations{.landscapeRight = 1}},
+		{landscape2Name, &defaultFace(), Orientations{.landscapeLeft = 1}},
+		{portraitName,   &defaultFace(), Orientations{.portrait = 1}},
+		{portrait2Name,  &defaultFace(), Orientations{.portraitUpsideDown = 1}},
 	},
 	emuOrientation
 	{
 		"In Emu", &defaultFace(),
 		{
-			.defaultItemOnSelect = [this](TextMenuItem &item) { app().setEmuOrientation(OrientationMask(item.id())); }
+			.defaultItemOnSelect = [this](TextMenuItem &item) { app().setEmuOrientation(std::bit_cast<Orientations>(uint8_t(item.id()))); }
 		},
-		(MenuItem::Id)app().emuOrientation(),
+		MenuItem::Id(uint8_t(app().emuOrientation())),
 		emuOrientationItem
 	},
 	layoutBehindSystemUI
@@ -336,6 +351,7 @@ void GUIOptionView::loadStockItems()
 	if(used(showBluetoothScan))
 		item.emplace_back(&showBluetoothScan);
 	item.emplace_back(&showHiddenFiles);
+	item.emplace_back(&maxRecentContent);
 	item.emplace_back(&orientationHeading);
 	item.emplace_back(&emuOrientation);
 	item.emplace_back(&menuOrientation);

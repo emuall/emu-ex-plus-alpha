@@ -224,7 +224,7 @@ bool Renderer::setDrawableConfig(Window &win, DrawableConfig config)
 
 void Renderer::setDefaultViewport(Window &win, Viewport v)
 {
-	winData(win).viewportRect = asYUpRelRect(v);
+	winData(win).viewportRect = v.asYUpRelRect();
 }
 
 bool Renderer::canRenderToMultiplePixelFormats() const
@@ -478,7 +478,7 @@ void Renderer::animateWindowRotation(Window &win, float srcAngle, float destAngl
 	winData(win).projAngleM = {srcAngle, destAngle, {}, SteadyClock::now(), Milliseconds{165}};
 	win.addOnFrame([this, &win](FrameParams params)
 	{
-		win.signalSurfaceChanged(WindowSurfaceChange::CONTENT_RECT_RESIZED);
+		win.signalSurfaceChanged({.contentRectResized = true});
 		bool didUpdate = winData(win).projAngleM.update(params.timestamp);
 		return didUpdate;
 	});
